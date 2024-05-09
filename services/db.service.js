@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const User = require('../models/user.model');
-const Message = require('../models/message.model');
 
 class DbService {
   connection;
@@ -9,38 +8,43 @@ class DbService {
     this.connection = await mongoose.connect(process.env.MONGO_URI);
     console.log('DB connected');
   }
+
   async getUserByTelegramId(telegramId) {
-    // thử tìm trong Database
-    let user = await User.findOne({
-      telegramId,
-    });
+    let user = await User.findOne({ telegramId });
     if (!user) {
-      // Nếu chưa có thì tạo mới một user dựa trên Telegram ID
       user = await User.create({
         telegramId,
+        subscribePlan: {
+          planName: 'Free',
+          addressLimit: 5,
+        },
+        addresses: [],
       });
     }
     return user;
   }
-  async getUserMessages(userId) {
-    // Nhớ rằng cái userId này không phải là TelegramID
-    return Message.find({
-      user: userId
-    });
+
+  async getUserAddresses(userId) {
+    const user = await User.findById(userId);
+    return user ? user.addresses : null;
   }
-  async createNewMessage(user, userMessage, botMessage) {
-    // Lưu tin nhắn vào Database
-    return Message.create({
-      user: user._id,
-      userMessage,
-      botMessage,
-    })
-  }
-  async clearUserMessages(userId) {
-    // Xoá các tin nhắn của người dùng trong Database
-    return Message.deleteMany({
-      user: userId
-    });
+
+  async createNewAddress(userId, addressId, aliasName) {
+    const user = await User.findById(userId);
+    if (!user) throw new Error('User not found');
+
+    if (user.addresses.length >= user.subscribePlan.addressLimit) {
+      throw new Error('Address limit exceeded');
+    }
+
+    const duplicate = user.addresses.find((addr) => addr.addressId === addressId && addr.aliasName === aliasName);
+    if (duplicate) {
+      throw new Error('Duplicate address');
+    }
+
+    user.addresses.push({ addressId, aliasName });
+    await user.save();
+    return user.addresses;
   }
 }
 
